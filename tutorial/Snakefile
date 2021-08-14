@@ -1,0 +1,64 @@
+configfile: "config.yaml"
+
+get_input_fastq = lambda wildcards: config["samples"][wildcards.sample]
+
+rule all:
+    input:
+        "calls/all.vcf",
+        "plots/qual.svg"
+
+rule bwa:
+    input:
+        "data/genome.fa",
+        get_input_fastq
+    output:
+        temp( "mapped/{sample}.bam" )
+    log:
+        "logs/bwa/{sample}.log"
+        #out = ... (then refer as log.out)
+    conda:
+        "envs/mapping.yaml"
+    threads: 8
+    params: # note the r to make string literal (I suppose)
+        rg = r"@RG\tID:{sample}\tSM:{sample}"
+    message:
+        "Mapping the reads for sample {sample} on the reference"
+    shell:
+        "( bwa mem -R '{params.rg}' -t {threads} {input} | "
+        "  samtools view -Sb - > {output} )  2>{log}"
+
+rule sort:
+    input:
+        "mapped/{sample}.bam"
+    output:
+        "mapped/{sample}.sorted.bam"
+    conda:
+        "envs/mapping.yaml"
+    shell:
+        "samtools sort -o {output} {input}"
+
+rule call:
+    input:
+        fa = "data/genome.fa",
+        bams = expand( "mapped/{sample}.sorted.bam", sample = config["samples"] )
+        #bais = expand( "mapped/{sample}.sorted.bai", sample = config["samples"] )
+    output:
+        "calls/all.vcf"
+    log:
+        "logs/bcftools/bcftools_call.log"
+    conda:
+        "envs/calling.yaml"
+    shell:
+        "( bcftools mpileup -f {input.fa} {input.bams} | "
+        "  bcftools call -mv - > {output} )  2>{log}"
+
+rule stats:
+    input:
+        "calls/all.vcf"
+    output:
+        "plots/qual.svg"
+    conda:
+        "envs/stats.yaml"
+    script:
+        "scripts/plot-quals.py"
+

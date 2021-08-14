@@ -1,0 +1,7 @@
+/.snakemake
+/calls
+/data
+/logs
+/mapped
+/plots
+/report.html
